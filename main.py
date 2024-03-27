@@ -2,6 +2,8 @@
 import json
 
 from nicegui import ui
+from barcode.writer import ImageWriter
+from barcode import EAN8
 
 def saveData(saveData:dict)->bool:
     try:
@@ -43,6 +45,12 @@ def updateAvailability(input, tableRef, setting:bool):
     saveData(runningData)
     tableRef.update_rows(runningData['rows'])
 
+def genBarcode(serialNum):
+    ean = EAN8(str(serialNum))
+    outputFile = 'barcodes/' + str(serialNum)
+    ean.save(str(outputFile))
+    ui.download(outputFile+".svg")
+
 runningData = readData()
 
 @ui.page("/editor")
@@ -61,11 +69,12 @@ def editorView():
         with table.add_slot('bottom'):
             with table.row():
                 with table.cell():
-                    ui.button(on_click=lambda: (
-                        table.add_rows({'id': genNewSerial(), 'name': new_name.value, 'descr': new_descr.value, 'flagged' : False}),
+                    ui.button(on_click=lambda serialNum = genNewSerial(): (
+                        table.add_rows({'id': serialNum, 'name': new_name.value, 'descr': new_descr.value, 'flagged' : False}),
                         new_name.set_value(None),
                         new_descr.set_value(None),
-                        saveData(runningData)
+                        saveData(runningData),
+                        genBarcode(serialNum)
                     ), icon='add').props('flat fab-mini')
                 with table.cell():
                     new_name = ui.input('Name')
@@ -75,7 +84,6 @@ def editorView():
         table.add_slot('body-cell-flag', '''
             <q-td key="flagged" :props="props">
                 <q-badge :color="props.value < true ? 'green' : 'red'">
-                    {{ props.value }}
                 </q-badge>
             </q-td>
             ''')
@@ -85,7 +93,7 @@ def normalView():
     with ui.table(columns=runningData['columns'], rows=runningData['rows']).classes('w-full') as table:
         with table.add_slot('top-left'):
             inp = None
-            inputRef = ui.input(placeholder='Scanner').props('autofocus').bind_value(table, 'filter').on('keydown.enter',lambda: (updateAvailability(inputRef.value, table, True),inputRef.set_value(None))) #.on('keydown.enter', lambda v: (updateAvailability(v.value, table, True), inputRef.set_value(None),inputRef.update(), ui.notify("Scanned")) if v.value != None and len(v.value)==8 else (inputRef.update()))
+            inputRef = ui.input(placeholder='Scanner').bind_value(table, 'filter').on('keydown.enter',lambda: (updateAvailability(inputRef.value, table, True),inputRef.set_value(None))) #.on('keydown.enter', lambda v: (updateAvailability(v.value, table, True), inputRef.set_value(None),inputRef.update(), ui.notify("Scanned")) if v.value != None and len(v.value)==8 else (inputRef.update()))
         with table.add_slot('top-right'):
             with ui.link(target=editorView):
                 ui.button('Editor View')
