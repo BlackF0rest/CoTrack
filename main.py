@@ -101,7 +101,6 @@ def normalView():
         table.add_slot('body-cell-flag', '''
             <q-td key="flagged" :props="props">
                 <q-badge :color="props.value < true ? 'green' : 'red'">
-                    {{ props.value }}
                 </q-badge>
             </q-td>
             ''')
