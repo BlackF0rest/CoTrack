@@ -1,60 +1,89 @@
 #!/usr/bin/env python3
-import time
 import json
 
 from nicegui import ui
 
-columns = [
-    {'name': 'id', 'label': 'ID', 'field': 'id', 'required' : True},
-    {'name': 'name', 'label': 'Name', 'field': 'name', 'required': True},
-    {'name': 'descr', 'label': 'Description', 'field': 'descr'},
-]
-rows = [
-    {'id': 10000000, 'name': 'Part 1', 'descr':'', 'flagged':False},
-    {'id': 10000001, 'name': 'Part 2', 'descr':'', 'flagged':False},
-    {'id': 10000002, 'name': 'Part 3', 'descr':'', 'flagged':False},
-    {'id': 10000003, 'name': 'Part 4', 'descr':'', 'flagged':False},
-    {'id': 10000004, 'name': 'Part 5', 'descr':'', 'flagged':False},
-    {'id': 10000005, 'name': 'Part 6', 'descr':'', 'flagged':False},
-    {'id': 10000006, 'name': 'Part 7', 'descr':'', 'flagged':False},
-]
+def saveData(saveData:dict)->bool:
+    try:
+        with open('data.json', 'w') as saveFile:
+            json.dump(saveData, saveFile)
+        ui.notify('Saved')
+    except Exception as e:
+        ui.notify('Error Saving File!', category='error')
+        return False
+    return True
 
-with ui.table(columns=columns, rows=rows, selection='multiple', pagination=10).classes('w-full') as table:
-    with table.add_slot('top-left'):
-        with ui.input(placeholder='Search').props('type=search').bind_value(table, 'filter').add_slot('append'):
-            ui.icon('search')
-    with table.add_slot('top-right'):
-        ui.button('Remove', on_click=lambda: table.remove_rows(*table.selected)) \
-            .bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
-    with table.add_slot('bottom'):
-        with table.row():
-            with table.cell():
-                ui.button(on_click=lambda: (
-                    table.add_rows({'id': time.time(), 'name': new_name.value, 'descr': new_descr.value}),
-                    new_name.set_value(None),
-                    new_descr.set_value(None),
-                ), icon='add').props('flat fab-mini')
-            with table.cell():
-                new_name = ui.input('Name')
-            with table.cell():
-                new_descr = ui.input('Description')
-    table.set_fullscreen(True)
+def readData()->dict:
+    try:
+        with open('data.json', 'r') as loadFile:
+            data = json.load(loadFile)
+        return data
+    except Exception as e:
+        ui.notify('Error Loading File!', category='error')
 
-class DataHandler:
-    def __init__(self) -> None:
-        pass
+def genNewSerial()->int:
+    lastID = max(item["id"] for item in runningData["rows"])
+    return  lastID + 1
+    
 
-    def saveData(rows:list,columns:list)->bool:
-        saveData = {
-            'rows': rows,
-            'columns': columns,
-        }
-        print(saveData)
-        try:
-            with open('data.json', 'w') as saveFile:
-                json.dump(saveData, saveFile)
-        except Exception as e:
-            ui.notify('Error Saving File!', category='error')
-            return False
-        return True
+runningData = readData()
+
+@ui.page("/editor")
+def editorView():
+    with ui.table(columns=runningData['columns'], rows=runningData['rows'], selection='multiple').classes('w-full') as table:
+        with table.add_slot('top-left'):
+            with ui.input(placeholder='Search').props('type=search').bind_value(table, 'filter').add_slot('append'):
+                ui.icon('search')
+        with table.add_slot('top-right'):
+            ui.button('Remove', on_click=lambda: (table.remove_rows(*table.selected), 
+                    saveData(runningData))) \
+                .bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
+            with ui.link(target=normalView):
+                ui.button('Close View')
+
+        with table.add_slot('bottom'):
+            with table.row():
+                with table.cell():
+                    ui.button(on_click=lambda: (
+                        table.add_rows({'id': genNewSerial(), 'name': new_name.value, 'descr': new_descr.value, 'flagged' : False}),
+                        new_name.set_value(None),
+                        new_descr.set_value(None),
+                        saveData(runningData)
+                    ), icon='add').props('flat fab-mini')
+                with table.cell():
+                    new_name = ui.input('Name')
+                with table.cell():
+                    new_descr = ui.input('Description')
+        table.set_fullscreen(True)
+        table.add_slot('body-cell-flag', '''
+            <q-td key="flagged" :props="props">
+                <q-badge :color="props.value < True ? 'red' : 'green'">
+                    {{ props.value }}
+                </q-badge>
+            </q-td>
+            ''')
+
+def scannerInput(input, tableRef):
+    print("8 Inputs")
+    #TODO flag it
+        
+@ui.page('/')
+def normalView():
+    with ui.table(columns=runningData['columns'], rows=runningData['rows']).classes('w-full') as table:
+        with table.add_slot('top-left'):
+            inputRef = None
+            inputRef = ui.input(placeholder='Scanner', on_change=lambda v: (scannerInput(v.value, table), inputRef.set_value(None),inputRef.update(), ui.notify("Scanned")) if v.value != None and len(v.value)==8 else inputRef.update()).bind_value(table, 'filter')
+        with table.add_slot('top-right'):
+            with ui.link(target=editorView):
+                ui.button('Editor View')
+        table.set_fullscreen(True)
+        table.add_slot('body-cell-flag', '''
+            <q-td key="flagged" :props="props">
+                <q-badge :color="props.value < True ? 'red' : 'green'">
+                    {{ props.value }}
+                </q-badge>
+            </q-td>
+            ''')
+
 ui.run()
+editorView()
