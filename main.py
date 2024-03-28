@@ -27,21 +27,22 @@ def genNewSerial()->int:
     lastID = max(item["id"] for item in runningData["rows"])
     return  lastID + 1
 
-def updateAvailability(input, tableRef, setting:bool):
-    if type(input) == str:
-        for row in runningData["rows"]:
-            if row["id"] == int(input):
-                row["flagged"] = setting
-            else:
-                pass
-    elif type(input) == list:
-
-        for inp in input:
+def updateAvailability(input=None, tableRef=None, setting:bool=False):
+    if input != None and tableRef != None:
+        if type(input) == str:
             for row in runningData["rows"]:
-                if row["id"] == int(inp['id']):
+                if row["id"] == int(input):
                     row["flagged"] = setting
                 else:
                     pass
+        elif type(input) == list:
+
+            for inp in input:
+                for row in runningData["rows"]:
+                    if row["id"] == int(inp['id']):
+                        row["flagged"] = setting
+                    else:
+                        pass
     saveData(runningData)
     tableRef.update_rows(runningData['rows'])
 
@@ -67,6 +68,7 @@ def editorView():
             with inputRef.add_slot("append"):
                 ui.icon('search')
         with table.add_slot('top-right'):
+            ui.button('Refresh', on_click=lambda: updateAvailability())
             ui.button('Refilled', on_click=lambda: updateAvailability(table.selected, table, False)).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
             ui.button('Remove', on_click=lambda: (table.remove_rows(*table.selected),saveData(runningData))).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
             with ui.link(target=normalView):
@@ -98,7 +100,7 @@ def normalView():
     with ui.table(columns=runningData['columns'], rows=runningData['rows']).classes('w-full') as table:
         with table.add_slot('top-left'):
             inp = None
-            inputRef = ui.input(placeholder='Scanner').bind_value(table, 'filter').on('keydown.enter',lambda: (updateAvailability(inputRef.value, table, True),inputRef.set_value(None))) #.on('keydown.enter', lambda v: (updateAvailability(v.value, table, True), inputRef.set_value(None),inputRef.update(), ui.notify("Scanned")) if v.value != None and len(v.value)==8 else (inputRef.update()))
+            inputRef = ui.input(placeholder='Scanner').bind_value(table, 'filter').on('keydown.enter',lambda: (updateAvailability(inputRef.value, table, True),inputRef.set_value(None)))
         with table.add_slot('top-right'):
             with ui.link(target=editorView):
                 ui.button('Editor View')
