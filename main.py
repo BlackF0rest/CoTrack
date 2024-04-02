@@ -2,11 +2,18 @@
 import json
 import threading, traceback
 import time
+import pandas as pd
 
 from nicegui import ui
 from barcode import Code128
 
 table = None
+
+columns = [
+    {"name": "flag", "label": "Available", "field": "flagged", "sortable": True}, 
+    {"name": "id", "label": "ID", "field": "id", "required": True}, 
+    {"name": "name", "label": "Name", "field": "name", "required": True}, 
+    {"name": "descr", "label": "Description", "field": "descr"}]
 
 def automaticRefresh(delay):
     nextTime = time.time() + delay
@@ -28,11 +35,10 @@ def saveData(saveData:dict)->bool:
         return False
     return True
 
-def readData()->dict:
+def readData()->pd.DataFrame:
     try:
-        with open('data.json', 'r') as loadFile:
-            data = json.load(loadFile)
-        return data
+        dataframe = pd.read_excel('Bauteileschrank.xlsx', sheet_name='Tabelle')
+        return dataframe
     except Exception as e:
         ui.notify('Error Loading File!', category='error')
 
@@ -77,7 +83,7 @@ runningData = readData()
 @ui.page("/editor")
 def editorView():
     global table
-    table = ui.table(columns=runningData['columns'], rows=runningData['rows'], selection='multiple').classes('w-full')
+    table = ui.table.from_pandas(runningData, selection='multiple').classes('w-full')
     with table.add_slot('top-left'):
         inputRef = ui.input(placeholder='Search').props('type=search').bind_value(table, 'filter').on('keydown.enter',lambda: (updateAvailability(inputRef.value, False),inputRef.set_value(None)))
         with inputRef.add_slot("append"):
@@ -104,7 +110,7 @@ def editorView():
                 new_descr = ui.input('Description')
     table.set_fullscreen(True)
     table.add_slot('body-cell-flag', '''
-        <q-td key="flagged" :props="props">
+        <q-td key="Available" :props="props">
             <q-badge :color="props.value < true ? 'green' : 'red'">
             </q-badge>
         </q-td>
@@ -113,7 +119,7 @@ def editorView():
 @ui.page('/')
 def normalView():
     global table
-    table =  ui.table(columns=runningData['columns'], rows=runningData['rows']).classes('w-full')
+    table =  ui.table.from_pandas(runningData).classes('w-full')
     with table.add_slot('top-left'):
         inp = None
         inputRef = ui.input(placeholder='Scanner').bind_value(table, 'filter').on('keydown.enter',lambda: (updateAvailability(inputRef.value, True),inputRef.set_value(None)))
@@ -122,10 +128,12 @@ def normalView():
             ui.button('Editor View')
     table.set_fullscreen(True)
     table.add_slot('body-cell-flag', '''
-        <q-td key="flagged" :props="props">
-            <q-badge :color="props.value < true ? 'green' : 'red'">
-            </q-badge>
-        </q-td>
+        <q-tr v-for="(row, index) in runningData" :key="index">
+             <q-td :key="Available" :props="row">
+                <q-badge :color="row[key] ? 'green' : 'red'">
+                </q-badge>
+            </q-td>
+        </q-tr>
         ''')
     
 threading.Thread(target=lambda: automaticRefresh(30))
