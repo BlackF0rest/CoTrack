@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
-import json
+import qrcode
 import threading, traceback
 import time
 import pandas as pd
 
 from nicegui import ui
-from barcode import Code128
 
 table = None
-
-columns = [
-    {"name": "flag", "label": "Available", "field": "flagged", "sortable": True}, 
-    {"name": "id", "label": "ID", "field": "id", "required": True}, 
-    {"name": "name", "label": "Name", "field": "name", "required": True}, 
-    {"name": "descr", "label": "Description", "field": "descr"}]
 
 def automaticRefresh(delay):
     nextTime = time.time() + delay
@@ -25,11 +18,9 @@ def automaticRefresh(delay):
             traceback.print_exc()
         nextTime += (time.time()-nextTime)//delay*delay+delay
 
-def saveData(saveData:dict)->bool:
+def saveData(saveData:pd.DataFrame)->bool:
     try:
-        with open('data.json', 'w') as saveFile:
-            json.dump(saveData, saveFile)
-        ui.notify('Saved')
+        saveData.to_excel(excel_writer='Bauteileschrank.xlsx', sheet_name='Tabelle', index=False)
     except Exception as e:
         ui.notify('Error Saving File!', category='error')
         return False
@@ -37,51 +28,63 @@ def saveData(saveData:dict)->bool:
 
 def readData()->pd.DataFrame:
     try:
-        dataframe = pd.read_excel('Bauteileschrank.xlsx', sheet_name='Tabelle')
+        dataframe = pd.read_excel('Bauteileschrank.xlsx', sheet_name='Tabelle', dtype={'Available':bool})
         return dataframe
     except Exception as e:
         ui.notify('Error Loading File!', category='error')
 
 def genNewSerial()->int:
-    lastID = max(item["id"] for item in runningData["rows"])
+    global runningData
+    lastID = runningData['id'].max()
     return  lastID + 1
 
 def updateAvailability(input=None, setting:bool=False):
     global table
+    global runningData
     if input != None:
         if type(input) == str:
-            for row in runningData["rows"]:
-                if row["id"] == int(input):
-                    row["flagged"] = setting
-                else:
-                    pass
+            runningData.loc[runningData['id']==int(input), 'Available'] = setting
         elif type(input) == list:
-
             for inp in input:
-                for row in runningData["rows"]:
-                    if row["id"] == int(inp['id']):
-                        row["flagged"] = setting
-                    else:
-                        pass
+                runningData.loc[runningData['id']==inp['id'], 'Available'] = setting
         saveData(runningData)
-    table.update_rows(runningData['rows'])
+    table.update_rows(runningData.loc[:].to_dict('records'))
 
 def genBarcode(serialNum):
-    print(serialNum)
-    code = Code128(str(serialNum))
+    #code = Code128(str(serialNum))
     outputFile = 'barcodes/' + str(serialNum)
-    code.save(str(outputFile))
-    ui.download(outputFile+".svg")
+    #code.save(str(outputFile))
+    img = qrcode.make(serialNum)
+    img.save(outputFile+'.png')
+    #ui.download(outputFile+'.png')
 
-def addRow(name, descr,table):
+def addRow(name, descr):
+    global runningData
     newSerial = genNewSerial()
-    table.add_rows({'id': newSerial, 'name': name, 'descr': descr, 'flagged' : False})
+    runningData.loc[len(runningData)] = [newSerial,True,name,descr]
     genBarcode(newSerial)
+    updateAvailability()
+
+def deleteRow(input):
+    global table
+    global runningData
+    if input != None:
+        for inp in input:
+            runningData = runningData[runningData['id']!=int(inp['id'])]
+        saveData(runningData)
+    table.update_rows(runningData.loc[:].to_dict('records'))
+    table.update()
+
+def downloadQrCodes(ids):
+    for id in ids:
+        filename = "barcodes/"+str(id['id'])+".png"
+        ui.download(filename)
 
 runningData = readData()
 
 @ui.page("/editor")
 def editorView():
+    global runningData
     global table
     table = ui.table.from_pandas(runningData, selection='multiple').classes('w-full')
     with table.add_slot('top-left'):
@@ -90,8 +93,9 @@ def editorView():
             ui.icon('search')
     with table.add_slot('top-right'):
         ui.button('Refresh&Save',on_click=lambda: updateAvailability())
-        ui.button('Refilled', on_click=lambda: updateAvailability(table.selected, table, False)).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
-        ui.button('Remove', on_click=lambda: (table.remove_rows(*table.selected),saveData(runningData))).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
+        ui.button('QR-Code/s', on_click=lambda: downloadQrCodes(table.selected)).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
+        ui.button('Refilled', on_click=lambda: updateAvailability(table.selected, True)).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
+        ui.button('Remove', on_click=lambda: (deleteRow(table.selected))).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
         with ui.link(target=normalView):
             ui.button('Close View')
 
@@ -99,7 +103,7 @@ def editorView():
         with table.row():
             with table.cell():
                 ui.button(on_click=lambda: (
-                    addRow(new_name.value, new_descr.value, table),
+                    addRow(new_name.value, new_descr.value),
                     new_name.set_value(None),
                     new_descr.set_value(None),
                     saveData(runningData)
@@ -109,9 +113,10 @@ def editorView():
             with table.cell():
                 new_descr = ui.input('Description')
     table.set_fullscreen(True)
-    table.add_slot('body-cell-flag', '''
+    table.add_slot('body-cell-Available', '''
         <q-td key="Available" :props="props">
-            <q-badge :color="props.value < true ? 'green' : 'red'">
+            <q-badge :color="props.value < true ? 'red' : 'green'">
+                {{ props.value < true ? 'No' : 'Yes' }}
             </q-badge>
         </q-td>
         ''')
@@ -119,23 +124,23 @@ def editorView():
 @ui.page('/')
 def normalView():
     global table
+    global runningData
     table =  ui.table.from_pandas(runningData).classes('w-full')
     with table.add_slot('top-left'):
         inp = None
-        inputRef = ui.input(placeholder='Scanner').bind_value(table, 'filter').on('keydown.enter',lambda: (updateAvailability(inputRef.value, True),inputRef.set_value(None)))
+        inputRef = ui.input(placeholder='Scanner').bind_value(table, 'filter').on('keydown.enter',lambda: (updateAvailability(inputRef.value, False),inputRef.set_value(None)))
     with table.add_slot('top-right'):
         with ui.link(target=editorView):
             ui.button('Editor View')
     table.set_fullscreen(True)
-    table.add_slot('body-cell-flag', '''
-        <q-tr v-for="(row, index) in runningData" :key="index">
-             <q-td :key="Available" :props="row">
-                <q-badge :color="row[key] ? 'green' : 'red'">
-                </q-badge>
-            </q-td>
-        </q-tr>
+    table.add_slot('body-cell-Available', '''
+        <q-td key="Available" :props="props">
+            <q-badge :color="props.value < true ? 'red' : 'green'">
+                {{ props.value < true ? 'No' : 'Yes' }}
+            </q-badge>
+        </q-td>
         ''')
-    
+        
 threading.Thread(target=lambda: automaticRefresh(30))
 
 ui.run(port=80,title='CoTrack',dark=None)
