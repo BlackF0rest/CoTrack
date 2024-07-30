@@ -1,8 +1,17 @@
 import pandas as pd
 import qrcode
 import os
-from nicegui import ui, App
+import asyncio
+import shutil
+from nicegui import ui, App, events
 from typing import Union
+from PIL import Image, ImageDraw, ImageFont
+
+#TODO auf INGO bestellen
+#TODO 2x Raspberry Pi 4 oder 5
+
+#TODO Focus on Scanner field
+#TODO Update regularly
 
 class InventoryManager:
 
@@ -11,12 +20,14 @@ class InventoryManager:
     and availability statuses.
     """
 
+    qr_width = 1000
+
     def __init__(self):
         """
         Initializes the InventoryManager with the inventory data from the Excel file 
         Bauteileschrank.xlsx.
         """
-        self.running_data = pd.read_excel('Bauteileschrank.xlsx', sheet_name='Tabelle', dtype={'Available':bool})
+        self.running_data = pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', usecols={"id","Available","Name"}, na_filter=True)
         self.table = None
 
     def save_data(self):
@@ -24,7 +35,8 @@ class InventoryManager:
         Saves the current inventory data to an Excel file.
         """
         try:
-            self.running_data.to_excel(excel_writer='Bauteileschrank.xlsx', sheet_name='Tabelle', index=False)
+            #self.running_data.to_excel(excel_writer='Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', index=False)
+            pass
         except Exception as e:
             ui.notify('Error Saving File!', category='error')
 
@@ -36,7 +48,7 @@ class InventoryManager:
         :rtype: pd.DataFrame
         """
         try:
-            self.running_data = pd.read_excel('Bauteileschrank.xlsx', sheet_name='Tabelle', dtype={'Available':bool})
+            self.running_data = pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', dtype={'Available':bool})
         except Exception as e:
             ui.notify('Error Loading File!', category='error')
 
@@ -76,8 +88,9 @@ class InventoryManager:
         self.table.update_rows(self.running_data.loc[:].to_dict('records'))
         self.table.update()
         ui.update()
+        self.save_data()
 
-    def add_row(self, name, descr):
+    def add_row(self, name:str, descr=""):
         """
         Adds a new item to the inventory.
 
@@ -88,37 +101,120 @@ class InventoryManager:
         """
         newSerial = self.gen_new_serial()
         self.running_data.loc[len(self.running_data)] = [newSerial, True, name, descr]
+        self.save_data()
         self.update_data()
+        #print(int(newSerial)) #TODO
 
-    def delete_row(self, input: Union[str, list[dict[str, int]]]):
+        filename = "barcodes/"+str(newSerial)+".png"
+        if not os.path.exists(filename):
+            img = qrcode.make(newSerial)
+            #img.save(filename)
+            #img = Image.open(filename)
+            new_width = self.qr_width
+            new_height = img.height
+            new_img = Image.new(img.mode, (new_width,new_height))
+            new_img.paste(img,(0,0))
+            draw = ImageDraw.Draw(new_img)
+            font = ImageFont.truetype('arial.ttf', 200)
+            text = str(name)
+            text_widht,text_height = draw.textsize(text,font=font)
+            size_var = 10
+            while text_widht >  new_width-(img.width+1):
+                font = ImageFont.truetype('arial.ttf', 200-size_var)
+                text_widht,text_height = draw.textsize(text,font=font)
+                size_var += 5
+            x = img.width + 1
+            y = img.height // 2 - text_height // 2
+            rectangle = Image.new(img.mode,((self.qr_width-img.width),img.height), color='white')
+            new_img.paste(rectangle,(img.width,0))
+            draw.text((x,y), text, font=font, fill='black')
+            new_img.save(filename)
+
+        self.download_qr_codes(single_id=newSerial)
+
+    async def delete_row(self, input: Union[str, list[dict[str, int]]]):
         """
         Deletes an item from the inventory.
 
         :param input: The serial number of the item.
         :type input: str
         """
-        try:
-            for inp in input:
-                self.running_data = self.running_data[self.running_data['id']!=int(inp['id'])]
-            self.save_data()
-            self.update_data()
-        except Exception as e:
-            ui.notify('Error Deleting File!', category='error')
 
-    def download_qr_codes(self, ids):
+        with ui.dialog() as dialog, ui.card():
+            ui.label('Are you sure?')
+            with ui.row():
+                ui.button('Yes', on_click=lambda: dialog.submit(True))
+                ui.button('No', on_click=lambda: dialog.submit(False))
+
+        result = await dialog
+
+        if result:
+            try:
+                for inp in input:
+                    self.running_data = self.running_data[self.running_data['id']!=int(inp['id'])]
+                self.save_data()
+                self.update_data()
+            except Exception as e:
+                ui.notify('Error Deleting File!', category='error')
+
+    def download_qr_codes(self, ids=None, single_id=None):
         """
         Downloads a QR code for each item with the given IDs.
 
         :param ids: The IDs of the items.
         :type ids: List[int]
         """
-        for id in ids:
-            filename = "barcodes/"+str(id['id'])+".png"
-            if not os.path.exists(filename):
-                outputFile = 'barcodes/' + str(id['id'])
-                img = qrcode.make(id['id'])
-                img.save(outputFile+'.png')
-            ui.download(filename)
+        if ids != None:
+            for id in ids:
+                #print(ids)
+                #print(id["id"]) #TODO
+                filename = "barcodes/"+str(id['id'])+".png"
+                if not os.path.exists(filename):
+                    img = qrcode.make(id['id'])
+                    img.save(filename)
+                    img = Image.open(filename)
+                    new_width = self.qr_width
+                    new_height = img.height
+                    new_img = Image.new(img.mode, (new_width,new_height))
+                    new_img.paste(img,(0,0))
+                    draw = ImageDraw.Draw(new_img)
+                    font = ImageFont.truetype('arial.ttf', 200)
+                    text = str(id["Name"])
+                    text_widht,text_height = draw.textsize(text,font=font)
+                    size_var = 10
+                    while text_widht >  new_width-(img.width+1):
+                        font = ImageFont.truetype('arial.ttf', 200-size_var)
+                        text_widht,text_height = draw.textsize(text,font=font)
+                        size_var += 5
+                    x = img.width + 1
+                    y = img.height // 2 - text_height // 2
+                    rectangle = Image.new(img.mode,((self.qr_width-img.width),img.height), color='white')
+                    new_img.paste(rectangle,(img.width,0))
+                    draw.text((x,y), text, font=font, fill='black')
+                    new_img.save(filename)
+        elif single_id != None:
+            filename = "barcodes/"+str(single_id)+".png"
+        else:
+            ui.notify("Problem with downloading.")
+        ui.download(filename)
+
+    def up_download_excel(self):
+        """
+        Uploads or downloads an Excel file with the inventory data. When Downloading it also exports the QR-Codes.
+        """
+        with ui.dialog() as dialog, ui.card():
+            with ui.tabs() as tabs:
+                ui.tab('up', label='Upload', icon='upload')
+                ui.tab('down', label='Download', icon='download')
+            with ui.tab_panels(tabs, value='up'):
+                with ui.tab_panel('up'):
+                    ui.upload(multiple=False, auto_upload=True).props('accept=.xlsx')
+                with ui.tab_panel('down'):
+                    ui.button('Download Excel', on_click=lambda: ui.download('Bauteileschrank.xlsx'))
+                    ui.button('Download QR-Codes', on_click=lambda: ui.download(shutil.make_archive('barcodes', 'zip', 'barcodes')))
+
+
+        dialog.open()
 
     def run(self):
         """
@@ -129,6 +225,8 @@ class InventoryManager:
         ui.run(port=80,title='CoTrack',dark=None)
         ui.open('/')
 
+        #asyncio.create_task(asyncio.sleep(60,lambda: self.update_data))
+
 inv = InventoryManager()
 
 @ui.page('/')
@@ -138,6 +236,7 @@ def normal_view():
     """
     inv.table =  ui.table.from_pandas(inv.running_data).classes('w-full')
     inv.table.columns[1]['sortable'] = True
+    inv.table.columns[0]['sortable'] = True
     with inv.table.add_slot('top-left'):
         inp = None
         inputRef = ui.input(placeholder='Scanner').bind_value(inv.table, 'filter').on('keydown.enter',lambda: (inv.update_availability(inputRef.value,False),inputRef.set_value(None)))
@@ -160,12 +259,14 @@ def editor_view():
         """
         inv.table = ui.table.from_pandas(inv.running_data, selection='multiple').classes('w-full')
         inv.table.columns[1]['sortable'] = True
+        inv.table.columns[0]['sortable'] = True
         with inv.table.add_slot('top-left'):
-            inputRef = ui.input(placeholder='Search').props('type=search').bind_value(inv.table, 'filter').on('keydown.enter',lambda: (inv.update_availability(inputRef.value, False),inputRef.set_value(None)))
+            inputRef = ui.input(placeholder='Search').props('type=search').bind_value(inv.table, 'filter').on('keydown.enter',lambda: (inv.update_availability(inputRef.value, True),inputRef.set_value(None)))
             with inputRef.add_slot("append"):
                 ui.icon('search')
         with inv.table.add_slot('top-right'):
             ui.button('Refresh',on_click=lambda: inv.update_data())
+            ui.button('Upload/Download Excel', on_click=lambda: inv.up_download_excel())
             ui.button('QR-Code/s', on_click=lambda: inv.download_qr_codes(inv.table.selected)).bind_enabled_from(inv.table, 'selected', backward=lambda val: bool(val))
             ui.button('Refilled', on_click=lambda: inv.update_availability(inv.table.selected, True)).bind_enabled_from(inv.table, 'selected', backward=lambda val: bool(val))
             ui.button('Remove', on_click=lambda: (inv.delete_row(inv.table.selected))).bind_enabled_from(inv.table, 'selected', backward=lambda val: bool(val))
@@ -178,8 +279,7 @@ def editor_view():
                     ui.button(on_click=lambda: (
                         inv.add_row(new_name.value, new_descr.value),
                         new_name.set_value(None),
-                        new_descr.set_value(None),
-                        inv.save_data(inv.running_data)
+                        new_descr.set_value(None)
                     ), icon='add').props('flat fab-mini')
                 with inv.table.cell():
                     new_name = ui.input('Name')
