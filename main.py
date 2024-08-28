@@ -2,6 +2,7 @@
 import qrcode
 import threading, traceback
 import time
+import os
 import pandas as pd
 
 from nicegui import ui
@@ -39,7 +40,6 @@ def genNewSerial()->int:
     return  lastID + 1
 
 def updateAvailability(input=None, setting:bool=False):
-    global table
     global runningData
     if input != None:
         if type(input) == str:
@@ -48,22 +48,25 @@ def updateAvailability(input=None, setting:bool=False):
             for inp in input:
                 runningData.loc[runningData['id']==inp['id'], 'Available'] = setting
         saveData(runningData)
+    updateData()
+
+def updateData():
+    global runningData
+    global table
+    runningData = readData()
     table.update_rows(runningData.loc[:].to_dict('records'))
 
 def genBarcode(serialNum):
-    #code = Code128(str(serialNum))
     outputFile = 'barcodes/' + str(serialNum)
-    #code.save(str(outputFile))
     img = qrcode.make(serialNum)
     img.save(outputFile+'.png')
-    #ui.download(outputFile+'.png')
 
 def addRow(name, descr):
     global runningData
     newSerial = genNewSerial()
     runningData.loc[len(runningData)] = [newSerial,True,name,descr]
     genBarcode(newSerial)
-    updateAvailability()
+    updateData()
 
 def deleteRow(input):
     global table
@@ -78,6 +81,8 @@ def deleteRow(input):
 def downloadQrCodes(ids):
     for id in ids:
         filename = "barcodes/"+str(id['id'])+".png"
+        if not os.path.exists(filename):
+            genBarcode(id['id'])
         ui.download(filename)
 
 runningData = readData()
@@ -92,7 +97,7 @@ def editorView():
         with inputRef.add_slot("append"):
             ui.icon('search')
     with table.add_slot('top-right'):
-        ui.button('Refresh&Save',on_click=lambda: updateAvailability())
+        ui.button('Refresh',on_click=lambda: updateData())
         ui.button('QR-Code/s', on_click=lambda: downloadQrCodes(table.selected)).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
         ui.button('Refilled', on_click=lambda: updateAvailability(table.selected, True)).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
         ui.button('Remove', on_click=lambda: (deleteRow(table.selected))).bind_enabled_from(table, 'selected', backward=lambda val: bool(val))
