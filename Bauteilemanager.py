@@ -11,7 +11,7 @@ from timeloop import Timeloop
 from datetime import timedelta
 from fpdf import FPDF
 import xlwings as xw
-import asyncio
+import multiprocessing
 
 #app = xw.App()
 
@@ -27,6 +27,58 @@ def debug_print(message):
 #TODO Focus on Scanner field
 
 tl = Timeloop()
+fileopen = False
+
+class excelWriter:
+    def update_excel(input: Union[str, list[dict[str, int]]], setting:bool=False):
+        done = False
+        while done == False:
+            if not fileopen:
+                try:
+                    app = xw.App()
+                    wb = xw.Book('Verbrauchsmaterial_ELab_TRGE.xlsx')
+                    sht = wb.sheets['Verbrauchsmaterial']
+                    if type(input) == str:
+                        debug_print("Updating String")
+                        for row in range(1, 1000):
+                            if sht.range('A' + str(row)).value == int(input):
+                                if setting == True:
+                                    sht.range('B' + str(row)).value = True
+                                    debug_print(input + " = True")
+                                else:
+                                    sht.range('B' + str(row)).value = False
+                                    debug_print(input + " = False")
+                                break
+                    elif type(input) == list:
+                        debug_print("Updating List")
+                        rownum = xw.Range('A1').current_region.last_cell.row
+                        debug_print("Rownum: "+str(rownum))
+                        for inp in input:
+                            #debug_print("ID: "+str(inp['id']))
+                            for row in range(1,rownum):
+                                if sht.range('A' + str(row)).value == int(inp['id']):
+                                    if setting == True:
+                                        sht.range('B' + str(row)).value = True
+                                        debug_print(str(inp['id']) + " = True")
+                                    else:
+                                        sht.range('B' + str(row)).value = False
+                                        debug_print(str(inp['id']) + " = False")
+                    wb.save()
+                    wb.close()
+                    app.quit()
+
+                except Exception as e:
+                    ui.notify('Error Updating Availability!', category='error')
+                    debug_print("Error Updating Availability! Error:\n"+str(e))
+                    wb.save()
+                    wb.close()
+                    app.quit()
+
+                done = True
+
+        wb = None
+        sht = None
+        debug_print("Updated Excel")
 
 class InventoryManager:
 
@@ -96,6 +148,9 @@ class InventoryManager:
         :param setting: The availability setting.
         :type setting: bool
         """
+        input_copy = input[:]
+        proc = multiprocessing.Process(target=excelWriter.update_excel, args=(input_copy, setting))
+        proc.start()
         if input != None:
             if type(input) == str:
                 debug_print("Updating String")
@@ -104,54 +159,8 @@ class InventoryManager:
                 debug_print("Updating List")
                 for inp in input:
                     self.running_data.loc[self.running_data['id']==inp['id'], 'Available'] = setting
-            try:
-                app = xw.App()
-                wb = xw.Book('Verbrauchsmaterial_ELab_TRGE.xlsx')
-                sht = wb.sheets['Verbrauchsmaterial']
-                if type(input) == str:
-                    debug_print("Updating String")
-                    for row in range(1, 1000):
-                        if sht.range('A' + str(row)).value == int(input):
-                            if setting == True:
-                                sht.range('B' + str(row)).value = True
-                                debug_print(input + " = True")
-                            else:
-                                sht.range('B' + str(row)).value = False
-                                debug_print(input + " = False")
-                            break
-                elif type(input) == list:
-                    debug_print("Updating List")
-                    rownum = xw.Range('A1').current_region.last_cell.row
-                    debug_print("Rownum: "+str(rownum))
-                    for inp in input:
-                        #debug_print("ID: "+str(inp['id']))
-                        for row in range(1,rownum):
-                            if sht.range('A' + str(row)).value == int(inp['id']):
-                                if setting == True:
-                                    sht.range('B' + str(row)).value = True
-                                    debug_print(str(inp['id']) + " = True")
-                                else:
-                                    sht.range('B' + str(row)).value = False
-                                    debug_print(str(inp['id']) + " = False")
-
-            except Exception as e:
-                ui.notify('Error Updating Availability!', category='error')
-                debug_print("Error Updating Availability! Error:\n"+str(e))
-
-            try:
-                wb.save()
-                wb.close()
-            except Exception as e:
-                debug_print("Error Saving File! Error:\n"+str(e))
-
-            try:
-                app.quit()
-            except Exception as e:
-                debug_print("Error Quitting Excel! Error:\n"+str(e))
-            self.wb = None
-            self.sht = None
             self.table.update_rows(self.running_data.loc[:].to_dict('records'))
-            debug_print("Updated Availability Threading")
+            debug_print("Updated Table")
         
     def update_data(self):
         """
@@ -168,7 +177,7 @@ class InventoryManager:
         debug_print("Generating QR-Code for single ID: "+str(serial))
         debug_print("Name: "+name)
 
-        # Generate the QR code
+        """# Generate the QR code
         qr = qrcode.QRCode(version=1, box_size=10, border=5)
         qr.add_data(id)
         qr.make(fit=True)
@@ -224,7 +233,7 @@ class InventoryManager:
         pdf.image(middle_img, x=0, y=70, w=80, keep_aspect_ratio=True)
         pdf.rect(10, 150, 80, 27)
         pdf.image(big_img, x=0, y=150, w=80, keep_aspect_ratio=True)
-        pdf.output(f"barcodes/{serial}.pdf")
+        pdf.output(f"barcodes/{serial}.pdf")"""
 
     def download_selected_qr_codes(self, id_list):
         """
@@ -283,8 +292,8 @@ class InventoryManager:
         The application will run until it is manually stopped.
         """
         ui.run(port=80,title='CoTrack',dark=None)
-        ui.open('/')
-        #tl.start(block=False)
+        #ui.open('/')
+        tl.start(block=False)
 
 @tl.job(interval=timedelta(minutes=1))
 def update():
@@ -357,4 +366,4 @@ def editor_view():
             </q-td>
             ''')
 
-inv.run() 
+inv.run()
