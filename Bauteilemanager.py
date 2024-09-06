@@ -320,7 +320,6 @@ def normal_view():
     inv.table.columns[0]['sortable'] = True
     with inv.table.add_slot('top-left'):
         inv.inputRef = ui.input(placeholder='Scanner').on('keydown.enter',lambda: (inv.update_availability(inv.inputRef.value, False), inv.inputRef.set_value(None))).props('type=search')
-        inv.table.bind_filter_from(inv.inputRef, 'value')
         #ui.button('Clear').on_click(lambda: (inv.inputRef.set_value(None)))
     with inv.table.add_slot('top-right'):
         with ui.link(target=editor_view):
@@ -333,6 +332,7 @@ def normal_view():
             </q-badge>
         </q-td>
         ''')
+    ui.run_javascript('document.querySelector("input").focus()')
 
 @ui.page('/editor')
 def editor_view():
