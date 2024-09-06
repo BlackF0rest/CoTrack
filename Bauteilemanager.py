@@ -2,18 +2,14 @@ import pandas as pd
 import PIL.ImageFont as ImageFont
 import qrcode
 import os
-import time
 import shutil
 from nicegui import ui
 from typing import Union
 from PIL import Image, ImageDraw
-from timeloop import Timeloop
-from datetime import timedelta
 from fpdf import FPDF
 from openpyxl import load_workbook
 import multiprocessing
 
-#app = xw.App()
 
 def debug_print(message):
     """
@@ -24,9 +20,6 @@ def debug_print(message):
     """
     print("\033[92m" + str(message) + "\033[0m")
 
-#TODO Focus on Scanner field
-
-#tl = Timeloop()
 fileopen = False
 
 class excelWriter:
@@ -55,7 +48,6 @@ class excelWriter:
                     elif type(input) == list:
                         debug_print("Updating List")
                         for inp in input:
-                            #debug_print("ID: "+str(inp['id']))
                             wb = load_workbook(file_path)
                             sheet = wb[sheet_name]
                             i = 1
@@ -80,7 +72,6 @@ class excelWriter:
                 done = True
 
         wb = None
-        sht = None
         debug_print("Updated Excel")
 
 class InventoryManager:
@@ -152,7 +143,6 @@ class InventoryManager:
         :type setting: bool
         """
         input_copy = input[:]
-        #setting_copy = setting[:]
         proc = multiprocessing.Process(target=excelWriter.update_excel, args=(input_copy, setting))
         proc.start()
         if input != None:
