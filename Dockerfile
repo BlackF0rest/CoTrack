@@ -45,4 +45,4 @@ RUN pip install pandas openpyxl Pillow qrcode[fork] fpdf nicegui
 EXPOSE 80
 
 # Command to run the inventory manager application
-CMD ["python", "inventory_manager.py"]
+CMD ["python", "Bauteilemanager.py"]
