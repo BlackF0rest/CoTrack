@@ -10,6 +10,12 @@ from fpdf import FPDF
 from openpyxl import load_workbook
 import multiprocessing
 
+def create_directories():
+    if not os.path.exists('barcodes'):
+        os.makedirs('barcodes')
+    if not os.path.exists('download_temp'):
+        os.makedirs('download_temp')
+
 
 def debug_print(message):
     """
@@ -88,6 +94,7 @@ class InventoryManager:
         Initializes the InventoryManager with the inventory data from the Excel file 
         Bauteileschrank.xlsx.
         """
+        create_directories()
         self.running_data = pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', usecols={"id","Available","Name"}, dtype={'Available':bool}, engine='openpyxl')
         self.table = None
         self.input = None
