@@ -7,6 +7,9 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
+# Copy the Excel file into the container
+COPY Verbrauchsmaterial_ELab_TRGE.xlsx /app/Verbrauchsmaterial_ELab_TRGE.xlsx
+
 # Install necessary system dependencies
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
@@ -24,6 +27,15 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
+# Create a directory for custom fonts
+RUN mkdir -p /usr/share/fonts/truetype/custom
+
+# Copy the Arial Bold font into the custom fonts directory
+COPY arialbd.ttf /usr/share/fonts/truetype/custom/
+
+# Update the font cache
+RUN fc-cache -f -v
+
 # Install Python dependencies
 RUN pip install --upgrade pip
 RUN pip install pandas openpyxl Pillow qrcode[fork] fpdf nicegui
@@ -32,4 +44,4 @@ RUN pip install pandas openpyxl Pillow qrcode[fork] fpdf nicegui
 EXPOSE 80
 
 # Command to run the inventory manager application
-CMD ["python", "Bauteilemanager.py"]
+CMD ["python", "inventory_manager.py"]
