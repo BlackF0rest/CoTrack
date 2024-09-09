@@ -7,7 +7,7 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Install any necessary system dependencies
+# Install necessary system dependencies
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -15,11 +15,13 @@ RUN apt-get update && apt-get install -y \
     libxrender1 \
     libxext6 \
     libx11-6 \
-    ttf-mscorefonts-installer \
     libopenjp2-7 \
-    libtiff5 \
+    libtiff-dev \
     libxcb1 \
     libpng-dev \
+    fonts-dejavu \
+    fonts-freefont-ttf \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
