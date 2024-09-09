@@ -25,13 +25,14 @@ RUN apt-get update && apt-get install -y \
     fonts-dejavu \
     fonts-freefont-ttf \
     fonts-liberation \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a directory for custom fonts
 RUN mkdir -p /usr/share/fonts/truetype/custom
 
 # Copy the Arial Bold font into the custom fonts directory
-COPY arialbd.ttf /usr/share/fonts/truetype/custom/
+COPY arialbd.ttf /usr/share/fonts/truetype/custom/arialbd.ttf
 
 # Update the font cache
 RUN fc-cache -f -v
