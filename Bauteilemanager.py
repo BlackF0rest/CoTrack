@@ -10,6 +10,8 @@ from fpdf import FPDF
 from openpyxl import load_workbook
 import multiprocessing
 
+lock = multiprocessing.Lock()
+
 def create_directories():
     if not os.path.exists('barcodes'):
         os.makedirs('barcodes')
@@ -26,58 +28,68 @@ def debug_print(message):
     """
     print("\033[92m" + str(message) + "\033[0m")
 
-fileopen = False
-
 class excelWriter:
-    def update_excel(input: Union[str, list[dict[str, int]]], setting:bool=False):
-        done = False
-        file_path = "Verbrauchsmaterial_ELab_TRGE.xlsx"
-        sheet_name = "Verbrauchsmaterial"
-        while done == False:
-            if not fileopen:
-                try:
-                    wb = load_workbook(file_path)
-                    sheet = wb[sheet_name]
-                    if type(input) == str:
-                        debug_print("Updating String")
-                        i = 1
+    file_lock = multiprocessing.Lock()
 
-                        for row in sheet.iter_rows(values_only=True):
+    def __init__(self):
+        self.wb = None
+        self.sheet = None
+        self.i = 1
+        self.done = False
+        self.file_path = "Verbrauchsmaterial_ELab_TRGE.xlsx"
+        self.sheet_name = "Verbrauchsmaterial"
+
+    def read_excel(self, lock):
+        with lock:
+            debug_print("Locked File")
+            try:
+                return pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', dtype={'Available':bool}, usecols={"id","Available","Name"})
+            except Exception as e:
+                debug_print("Error Reading File! Error:\n"+str(e))
+                ui.notify('Error Loading File!', category='error')
+                return None
+
+    def update_excel(self, input: Union[str, list[dict[str, int]]], setting:bool=False, lock=None):
+        with lock:
+            debug_print("Locked File")
+            try:
+                self.wb = load_workbook(self.file_path)
+                self.sheet = self.wb[self.sheet_name]
+                if type(input) == str:
+                    debug_print("Updating String")
+
+                    for self.row in self.sheet.iter_rows(values_only=True):
+                        if self.row[0] != None:
+                            if self.row[0] == int(input):
+                                self.sheet['B'+str(self.i)] = setting
+                                debug_print("Edited Value from ID")
+                                break
+                        self.i += 1
+                    
+                    self.wb.save(self.file_path)
+                elif type(input) == list:
+                    debug_print("Updating List")
+                    for self.inp in input:
+                        self.i = 1
+
+                        for row in self.sheet.iter_rows(values_only=True):
                             if row[0] != None:
-                                if row[0] == int(input):
-                                    sheet['B'+str(i)] = setting
+                                if row[0] == int(self.inp['id']):
+                                    self.sheet['B'+str(self.i)] = setting
                                     debug_print("Edited Value from ID")
                                     break
-                            i += 1
-                        
-                        wb.save(file_path)
-                    elif type(input) == list:
-                        debug_print("Updating List")
-                        for inp in input:
-                            wb = load_workbook(file_path)
-                            sheet = wb[sheet_name]
-                            i = 1
+                            self.i += 1
 
-                            for row in sheet.iter_rows(values_only=True):
-                                if row[0] != None:
-                                    if row[0] == int(inp['id']):
-                                        sheet['B'+str(i)] = setting
-                                        debug_print("Edited Value from ID")
-                                        break
-                                i += 1
+                    self.wb.save(self.file_path)
+                self.wb.close()
+                debug_print("Written into Excel")
+            except Exception as e:
+                ui.notify('Error Updating Availability!', category='error')
+                debug_print("Error Updating Availability! Error:\n"+str(e))
+                self.wb.save(self.file_path)
+                self.wb.close()
 
-                        wb.save(file_path)
-                    wb.close()
-                    debug_print("Written into Excel")
-                except Exception as e:
-                    ui.notify('Error Updating Availability!', category='error')
-                    debug_print("Error Updating Availability! Error:\n"+str(e))
-                    wb.save(file_path)
-                    wb.close()
-
-                done = True
-
-        wb = None
+        self.wb = None
         debug_print("Updated Excel")
 
 class InventoryManager:
@@ -95,7 +107,7 @@ class InventoryManager:
         Bauteileschrank.xlsx.
         """
         create_directories()
-        self.running_data = pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', usecols={"id","Available","Name"}, dtype={'Available':bool}, engine='openpyxl')
+        self.running_data = None
         self.table = None
         self.input = None
         self.wb = None
@@ -123,11 +135,11 @@ class InventoryManager:
         :return: The inventory data.
         :rtype: pd.DataFrame
         """
-        try:
-            self.running_data = pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', dtype={'Available':bool}, usecols={"id","Available","Name"})
-        except Exception as e:
-            debug_print("Error Reading File! Error:\n"+str(e))
-            ui.notify('Error Loading File!', category='error')
+        xlWriter = excelWriter()
+        ret_data = xlWriter.read_excel(lock)
+        if not ret_data.empty:
+            self.running_data = ret_data
+        
 
     """def gen_new_serial(self) -> int:
         """"""
@@ -150,7 +162,9 @@ class InventoryManager:
         :type setting: bool
         """
         input_copy = input[:]
-        proc = multiprocessing.Process(target=excelWriter.update_excel, args=(input_copy, setting))
+        debug_print(input_copy)
+        xlWriter = excelWriter()
+        proc = multiprocessing.Process(target=xlWriter.update_excel, args=(input_copy, setting, lock))
         proc.start()
         if input != None:
             if type(input) == str:
@@ -232,12 +246,12 @@ class InventoryManager:
         pdf = FPDF()
         pdf.set_line_width(0.5)
         pdf.add_page()
-        pdf.rect(10, 10, 51.5, 14.5)
-        pdf.image(new_img, x=0, y=10, w=51.5, keep_aspect_ratio=True)
-        pdf.rect(10, 70, 80, 22)
-        pdf.image(middle_img, x=0, y=70, w=80, keep_aspect_ratio=True)
-        pdf.rect(10, 150, 80, 27)
-        pdf.image(big_img, x=0, y=150, w=80, keep_aspect_ratio=True)
+        pdf.rect(10, 10, 53, 14.5)
+        pdf.image(new_img, x=0, y=10, w=53, keep_aspect_ratio=True)
+        pdf.rect(10, 70, 82, 22)
+        pdf.image(middle_img, x=0, y=70, w=82, keep_aspect_ratio=True)
+        pdf.rect(10, 150, 82, 27)
+        pdf.image(big_img, x=0, y=150, w=82, keep_aspect_ratio=True)
         pdf.output(f"barcodes/{serial}.pdf")
 
     def download_selected_qr_codes(self, id_list):
@@ -297,15 +311,9 @@ class InventoryManager:
         The application will run until it is manually stopped.
         """
         ui.run(port=80,title='CoTrack',dark=None)
-        #ui.open('/')
-        #tl.start(block=False)
-
-#@tl.job(interval=timedelta(minutes=1))
-def update():
-    debug_print("Updating Data")
-    inv.update_data()
 
 inv = InventoryManager()
+inv.read_data()
 
 @ui.page('/')
 def normal_view():
