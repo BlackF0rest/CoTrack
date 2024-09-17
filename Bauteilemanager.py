@@ -10,7 +10,11 @@ from fpdf import FPDF
 from openpyxl import load_workbook
 import multiprocessing
 
-lock = multiprocessing.Lock()
+# Create a multiprocessing context with 'spawn'
+ctx = multiprocessing.get_context('spawn')
+
+# Use this context to create a lock
+lock = ctx.Lock()
 
 def create_directories():
     if not os.path.exists('barcodes'):
@@ -29,7 +33,7 @@ def debug_print(message):
     print("\033[92m" + str(message) + "\033[0m")
 
 class excelWriter:
-    file_lock = multiprocessing.Lock()
+    file_lock = ctx.Lock()
 
     def __init__(self):
         self.wb = None
