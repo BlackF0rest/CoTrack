@@ -47,7 +47,7 @@ class excelWriter:
         with lock:
             debug_print("Locked File")
             try:
-                return pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', dtype={'Available':bool}, usecols={"id","Available","Name"})
+                return pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', dtype={'Available':bool}, usecols={"id","Available","Name", "SAP.Nr."})
             except Exception as e:
                 debug_print("Error Reading File! Error:\n"+str(e))
                 ui.notify('Error Loading File!', category='error')
@@ -191,7 +191,7 @@ class InventoryManager:
         self.table.update()
         debug_print("Updated Data")
 
-    def gen_qr_code(self, serial:int, name:str, sap:int=0):
+    def gen_qr_code(self, serial:int, name:str, sap:int=None):
         filename = f"barcodes/{serial}.pdf"
 
         debug_print("Generating QR-Code for ID: "+str(serial))
@@ -199,32 +199,35 @@ class InventoryManager:
 
         # Generate the QR code
         qr = qrcode.QRCode(version=1, box_size=10, border=5)
-        qr.add_data(id)
+        qr.add_data(serial)
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
 
         # Create a new image with the QR code and text
         width, height = img.size
         new_width = width + 1071
-        new_height = height + 50
+        new_height = height + 55
         new_img = Image.new("RGB", (new_width, new_height), "white")
         new_img.paste(img, (0, 0))
 
         # Add text to the image
         draw = ImageDraw.Draw(new_img)
-        font = ImageFont.truetype("arial.ttf", 100)  # You may need to install a font
+        font = ImageFont.truetype("./arialbd.ttf", 60)  # You may need to install a font
         if len(name) < 33:
             draw.text((width + 10, 40), name, font=font, fill="black")
-            draw.text((width + 10, 180), sap, font=font, fill="black")
+            if sap != "-":
+                draw.text((width + 10, 230), str(sap), font=font, fill="black")
         elif len(name) < 66:
             draw.text((width + 10, 40), name[:33], font=font, fill="black")
             draw.text((width + 10, 120), name[33:], font=font, fill="black")
-            draw.text((width + 10, 180), sap, font=font, fill="black")
-        elif len(name) < 99:
+            if sap != "-":
+                draw.text((width + 10, 230), str(sap), font=font, fill="black")
+        elif len(name) <= 99:
             draw.text((width + 10, 40), name[:33], font=font, fill="black")
             draw.text((width + 10, 120), name[33:66], font=font, fill="black")
-            #draw.text((width + 10, 180), name[99:], font=font, fill="black")
-            draw.text((width + 10, 180), sap, font=font, fill="black")
+            draw.text((width + 10, 180), name[99:], font=font, fill="black")
+            if sap != "-":
+                draw.text((width + 10, 230), str(sap), font=font, fill="black")
         #elif len(name) < 132:
             #draw.text((width + 10, 40), name[:33], font=font, fill="black")
             #draw.text((width + 10, 120), name[33:66], font=font, fill="black")
@@ -250,12 +253,12 @@ class InventoryManager:
         pdf = FPDF()
         pdf.set_line_width(0.5)
         pdf.add_page()
-        pdf.rect(10, 10, 53, 14.5)
-        pdf.image(new_img, x=0, y=10, w=53, keep_aspect_ratio=True)
-        pdf.rect(10, 70, 82, 22)
-        pdf.image(middle_img, x=0, y=70, w=82, keep_aspect_ratio=True)
-        pdf.rect(10, 150, 82, 27)
-        pdf.image(big_img, x=0, y=150, w=82, keep_aspect_ratio=True)
+        pdf.rect(0, 10, 54, 15)
+        pdf.image(new_img, x=0.05, y=10.5, w=53, keep_aspect_ratio=True)
+        pdf.rect(0, 70, 82, 23)
+        pdf.image(middle_img, x=0.05, y=70, w=82, keep_aspect_ratio=True)
+        pdf.rect(0, 150, 82, 28)
+        pdf.image(big_img, x=0.05, y=150, w=82, keep_aspect_ratio=True)
         pdf.output(f"barcodes/{serial}.pdf")
 
     def download_selected_qr_codes(self, id_list):
@@ -266,8 +269,8 @@ class InventoryManager:
         :type ids: List[int]
         """
         for id in self.running_data['id']:
-                if not os.path.exists(f"barcodes/{id}.png"):
-                    self.gen_qr_code(id, self.running_data.loc[self.running_data['id']==id, 'Name'].values[0])
+                if os.path.exists(f"barcodes/{id}.png"):
+                    self.gen_qr_code(id, self.running_data.loc[self.running_data['id']==id, 'Name'].values[0], self.running_data.loc[self.running_data['id']==id, 'SAP.Nr.'].values[0])
         for serial in id_list:
             shutil.copy(f"barcodes/{serial['id']}.pdf", f"download_temp/{serial['id']}.pdf")
         ui.download(shutil.make_archive('labels', 'zip', 'download_temp'))
@@ -288,7 +291,7 @@ class InventoryManager:
             self.update_data()
             for id in self.running_data['id']:
                 if not os.path.exists(f"barcodes/{id}.png"):
-                    self.gen_qr_code(id, self.running_data.loc[self.running_data['id']==id, 'Name'].values[0])
+                    self.gen_qr_code(id, self.running_data.loc[self.running_data['id']==id, 'Name'].values[0], self.running_data.loc[self.running_data['id']==id, 'SAP.Nr.'].values[0])
         except Exception as e:
             ui.notify('Error Uploading File!', category='error')
             debug_print(f"Error Uploading File! Error:{e}")
