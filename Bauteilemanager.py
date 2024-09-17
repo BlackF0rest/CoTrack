@@ -47,7 +47,7 @@ class excelWriter:
         with lock:
             debug_print("Locked File")
             try:
-                return pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', dtype={'Available':bool}, usecols={"id","Available","Name", "SAP.Nr."})
+                return pd.read_excel('Verbrauchsmaterial_ELab_TRGE.xlsx', sheet_name='Verbrauchsmaterial', dtype={'Available':bool}, usecols={"id","Available","Name"})
             except Exception as e:
                 debug_print("Error Reading File! Error:\n"+str(e))
                 ui.notify('Error Loading File!', category='error')
@@ -269,7 +269,8 @@ class InventoryManager:
         :type ids: List[int]
         """
         for id in self.running_data['id']:
-                if os.path.exists(f"barcodes/{id}.png"):
+                print(str(id) + " : " + str(os.path.exists(f"barcodes/{id}.png")))
+                if not os.path.exists(f"/barcodes/{id}.png"):
                     self.gen_qr_code(id, self.running_data.loc[self.running_data['id']==id, 'Name'].values[0], self.running_data.loc[self.running_data['id']==id, 'SAP.Nr.'].values[0])
         for serial in id_list:
             shutil.copy(f"barcodes/{serial['id']}.pdf", f"download_temp/{serial['id']}.pdf")
