@@ -283,6 +283,7 @@ class InventoryManager:
                 if not os.path.exists(f"/barcodes/{id}.png"):
                     self.gen_qr_code(id, self.running_data.loc[self.running_data['id']==id, 'Name'].values[0], self.running_data.loc[self.running_data['id']==id, 'SAP.Nr.'].values[0])
         for serial in id_list:
+            debug_print(serial["id"])
             shutil.copy(f"barcodes/{serial['id']}.pdf", f"download_temp/{serial['id']}.pdf")
         ui.download(shutil.make_archive('labels', 'zip', 'download_temp'))
         for filename in os.listdir('download_temp'):
