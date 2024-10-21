@@ -1,0 +1,9 @@
+services:
+  cotrack:
+    image: cotrack:<VERSION>
+    container_name: cotrack
+    ports:
+      - "8081:80"
+    environment:
+      - TIMEOUT=0
+    restart: unless-stopped
